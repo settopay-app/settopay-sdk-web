@@ -14,7 +14,9 @@ yarn add @setto/web-sdk
 
 ## 사용법
 
-### 기본 사용
+### 기본 사용 (Setto 자체 로그인)
+
+자체 인증 시스템이 없는 경우, idpToken 없이 호출하면 Setto 자체 OAuth 로그인을 사용합니다.
 
 ```typescript
 import { SettoSDK } from '@setto/web-sdk';
@@ -28,6 +30,7 @@ const setto = new SettoSDK({
 // 결제 요청
 async function handlePayment() {
   try {
+    // idpToken 없이 호출 → Setto 자체 OAuth 로그인 화면 표시
     const result = await setto.openPayment({
       orderId: 'order-123',
       amount: 10000,
@@ -46,7 +49,9 @@ async function handlePayment() {
 }
 ```
 
-### Firebase 연동 (IdP Token 전달)
+### Firebase/Cognito 연동 (IdP Token 전달)
+
+자체 IdP(Firebase, Cognito 등)가 있는 경우, idpToken을 전달하면 Setto 로그인을 생략하고 바로 결제 화면이 표시됩니다.
 
 ```typescript
 import { getAuth } from 'firebase/auth';
@@ -61,18 +66,20 @@ async function handlePayment() {
   // Firebase ID Token 획득
   const idpToken = await getAuth().currentUser?.getIdToken();
 
-  if (!idpToken) {
-    alert('로그인이 필요합니다');
-    return;
-  }
-
   const result = await setto.openPayment({
     orderId: 'order-123',
     amount: 10000,
-    idpToken, // IdP Token 전달
+    idpToken, // 전달하면 Setto 로그인 생략, 바로 결제 화면
   });
 }
 ```
+
+### idpToken 유무에 따른 동작
+
+| idpToken | wallet.settopay.com 동작 |
+|----------|-------------------------|
+| **전달됨** | IdP Token 검증 → 즉시 결제 화면 표시 (로그인 불필요) |
+| **미전달** | Setto 자체 OAuth 로그인 화면 표시 → 로그인 후 결제 진행 |
 
 ## API
 

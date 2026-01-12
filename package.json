@@ -1,6 +1,6 @@
 {
   "name": "@setto-pay/external-sdk-web",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Setto External SDK for Web - Integrate Setto payments into your web application",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

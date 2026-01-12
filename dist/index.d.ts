@@ -6,16 +6,16 @@
  */
 type Environment = 'dev' | 'prod';
 interface InitConfig {
-    merchantId: string;
     environment: Environment;
-    idpToken?: string;
     debug?: boolean;
 }
 interface PaymentParams {
+    merchantId: string;
     amount: string;
-    orderId?: string;
+    idpToken?: string;
 }
 interface InfoParams {
+    merchantId: string;
     paymentId: string;
 }
 interface PaymentResult {
@@ -37,18 +37,16 @@ declare const SettoSDK: {
     /**
      * SDK 초기화
      *
-     * @param initConfig.merchantId - 고객사 ID (필수)
      * @param initConfig.environment - 환경 (dev | prod)
-     * @param initConfig.idpToken - IdP 토큰 (선택, 있으면 자동로그인)
      * @param initConfig.debug - 디버그 로그 (선택)
      */
     initialize(initConfig: InitConfig): void;
     /**
      * 결제 요청
      *
-     * IdP Token 유무에 따라 자동로그인 여부가 결정됩니다.
+     * 항상 PaymentToken을 발급받아 Fragment로 전달합니다.
      * - IdP Token 없음: Setto 로그인 필요
-     * - IdP Token 있음: PaymentToken 발급 후 자동로그인
+     * - IdP Token 있음: 자동로그인
      */
     openPayment(params: PaymentParams): Promise<PaymentResult>;
     /**

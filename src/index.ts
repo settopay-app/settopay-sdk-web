@@ -13,14 +13,13 @@ export type Environment = 'dev' | 'prod';
 
 export interface InitConfig {
   environment: Environment;
-  idpToken?: string; // IdP 토큰 (있으면 자동로그인)
   debug?: boolean;
 }
 
 export interface PaymentParams {
   merchantId: string;
   amount: string;
-  orderId?: string;
+  idpToken?: string; // IdP 토큰 (선택, 있으면 자동로그인)
 }
 
 export interface InfoParams {
@@ -88,7 +87,6 @@ export const SettoSDK = {
    * SDK 초기화
    *
    * @param initConfig.environment - 환경 (dev | prod)
-   * @param initConfig.idpToken - IdP 토큰 (선택, 있으면 자동로그인)
    * @param initConfig.debug - 디버그 로그 (선택)
    */
   initialize(initConfig: InitConfig): void {
@@ -97,68 +95,57 @@ export const SettoSDK = {
       return;
     }
     config = initConfig;
-    debugLog('Initialized:', { ...config, idpToken: config.idpToken ? '[REDACTED]' : undefined });
+    debugLog('Initialized:', config);
   },
 
   /**
    * 결제 요청
    *
-   * IdP Token 유무에 따라 자동로그인 여부가 결정됩니다.
+   * 항상 PaymentToken을 발급받아 Fragment로 전달합니다.
    * - IdP Token 없음: Setto 로그인 필요
-   * - IdP Token 있음: PaymentToken 발급 후 자동로그인
+   * - IdP Token 있음: 자동로그인
    */
   async openPayment(params: PaymentParams): Promise<PaymentResult> {
     const cfg = getConfig();
     const baseUrl = ENVIRONMENTS[cfg.environment];
 
-    let url: string;
-
-    if (cfg.idpToken) {
-      // IdP Token 있음 → PaymentToken 발급 → Fragment로 전달
-      debugLog('Requesting PaymentToken...');
-      try {
-        const response = await fetch(`${baseUrl}/api/external/payment/token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            merchant_id: params.merchantId,
-            amount: params.amount,
-            order_id: params.orderId,
-            idp_token: cfg.idpToken,
-          }),
-        });
-
-        const data = await response.json();
-        if (data.payment_error || data.system_error) {
-          debugLog('PaymentToken error:', data);
-          return { status: 'failed', error: data.payment_error || data.system_error };
-        }
-
-        if (!data.payment_token) {
-          debugLog('PaymentToken not received');
-          return { status: 'failed', error: 'Payment token not received' };
-        }
-
-        // Fragment로 전달 (보안: 서버 로그에 남지 않음)
-        url = `${baseUrl}/pay/wallet#pt=${encodeURIComponent(data.payment_token)}`;
-        debugLog('Opening payment with auto-login');
-      } catch (error) {
-        debugLog('PaymentToken request error:', error);
-        return { status: 'failed', error: 'Network error' };
+    // 항상 PaymentToken 발급 (idpToken 유무와 상관없이)
+    debugLog('Requesting PaymentToken...');
+    try {
+      const body: Record<string, string> = {
+        merchant_id: params.merchantId,
+        amount: params.amount,
+      };
+      if (params.idpToken) {
+        body.idp_token = params.idpToken;
       }
-    } else {
-      // IdP Token 없음 → Query param으로 직접 전달
-      const paymentUrl = new URL(`${baseUrl}/pay/wallet`);
-      paymentUrl.searchParams.set('merchant_id', params.merchantId);
-      paymentUrl.searchParams.set('amount', params.amount);
-      if (params.orderId) {
-        paymentUrl.searchParams.set('order_id', params.orderId);
+
+      const response = await fetch(`${baseUrl}/api/external/payment/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+      if (data.payment_error || data.system_error) {
+        debugLog('PaymentToken error:', data);
+        return { status: 'failed', error: data.payment_error || data.system_error };
       }
-      url = paymentUrl.toString();
-      debugLog('Opening payment with Setto login');
+
+      if (!data.payment_token) {
+        debugLog('PaymentToken not received');
+        return { status: 'failed', error: 'Payment token not received' };
+      }
+
+      // Fragment로 전달 (보안: 서버 로그에 남지 않음)
+      const url = `${baseUrl}/pay/wallet#pt=${encodeURIComponent(data.payment_token)}`;
+      debugLog('Opening payment page');
+
+      return openIframeAndWait(url, cfg);
+    } catch (error) {
+      debugLog('PaymentToken request error:', error);
+      return { status: 'failed', error: 'Network error' };
     }
-
-    return openIframeAndWait(url, cfg);
   },
 
   /**
@@ -202,7 +189,7 @@ export const SettoSDK = {
 
 function openIframeAndWait(url: string, cfg: InitConfig): Promise<PaymentResult> {
   return new Promise((resolve) => {
-    // Overlay 생성
+    // Overlay 생성 (전체 화면, 투명)
     const overlay = document.createElement('div');
     overlay.id = 'setto-overlay';
     overlay.style.cssText = `
@@ -211,25 +198,25 @@ function openIframeAndWait(url: string, cfg: InitConfig): Promise<PaymentResult>
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.5);
+      background: transparent;
       z-index: 99999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      pointer-events: none;
     `;
 
-    // iframe 생성
+    // iframe 생성 (전체 화면 - 내부에서 바닥 모달 스타일 처리)
     const iframe = document.createElement('iframe');
     iframe.id = 'setto-iframe';
     iframe.src = url;
+    iframe.allow = 'clipboard-write';
     iframe.style.cssText = `
-      width: 420px;
-      height: 680px;
-      max-width: 95vw;
-      max-height: 90vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       border: none;
-      border-radius: 16px;
-      background: white;
+      background: transparent;
+      pointer-events: auto;
     `;
 
     overlay.appendChild(iframe);
@@ -240,15 +227,6 @@ function openIframeAndWait(url: string, cfg: InitConfig): Promise<PaymentResult>
       window.removeEventListener('message', messageHandler);
       overlay.remove();
     };
-
-    // Overlay 클릭 시 취소
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) {
-        debugLog('Payment cancelled by user (overlay click)');
-        cleanup();
-        resolve({ status: 'cancelled' });
-      }
-    });
 
     // ESC 키로 취소
     const escHandler = (e: KeyboardEvent): void => {

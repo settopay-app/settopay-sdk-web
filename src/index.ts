@@ -1,235 +1,298 @@
 /**
- * Setto Web SDK
+ * Setto External SDK - Web (TypeScript/JavaScript)
  *
- * iframe + postMessage 방식으로 wallet.settopay.com과 통신하여 결제를 처리합니다.
- *
- * @example
- * ```typescript
- * import { SettoSDK } from '@setto/web-sdk';
- *
- * const setto = new SettoSDK({
- *   merchantId: 'merchant-123',
- *   environment: 'production',
- * });
- *
- * const result = await setto.openPayment({
- *   orderId: 'order-456',
- *   amount: 10000,
- *   idpToken: await getFirebaseIdToken(),
- * });
- * ```
+ * 고객사 웹에서 Setto 결제를 연동하기 위한 SDK
+ * iframe 기반으로 wallet.settopay.com 결제 페이지를 열고 postMessage로 결과를 수신
  */
 
-import { getBaseUrl } from './environments';
-import { SettoError, SettoErrorCode } from './errors';
-import {
-  MESSAGE_TYPES,
-  type InitPaymentMessage,
-  type PaymentParams,
-  type PaymentResult,
-  type PaymentResultMessage,
-  type SettoSDKConfig,
-} from './types';
+// ============================================
+// Types
+// ============================================
 
-// ============================================================================
-// CSS 스타일 상수
-// ============================================================================
+export type Environment = 'dev' | 'prod';
 
-const OVERLAY_STYLES = `
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 9999;
-`;
+export interface InitConfig {
+  merchantId: string;
+  environment: Environment;
+  idpToken?: string; // IdP 토큰 (있으면 자동로그인)
+  debug?: boolean;
+}
 
-const IFRAME_STYLES = `
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 400px;
-  height: 600px;
-  max-width: 95vw;
-  max-height: 90vh;
-  border: none;
-  border-radius: 12px;
-  z-index: 10000;
-`;
+export interface PaymentParams {
+  amount: string;
+  orderId?: string;
+}
 
-// ============================================================================
-// SettoSDK 클래스
-// ============================================================================
+export interface InfoParams {
+  paymentId: string;
+}
 
-/**
- * Setto Web SDK
- *
- * 고객사 웹사이트에서 Setto 결제를 연동하기 위한 SDK입니다.
- * iframe으로 wallet.settopay.com을 로드하고 postMessage로 통신합니다.
- */
-export class SettoSDK {
-  private readonly merchantId: string;
-  private readonly baseUrl: string;
+export interface PaymentResult {
+  status: 'success' | 'failed' | 'cancelled';
+  paymentId?: string;
+  txHash?: string;
+  error?: string;
+}
 
-  private iframe: HTMLIFrameElement | null = null;
-  private overlay: HTMLDivElement | null = null;
-  private messageHandler: ((event: MessageEvent) => void) | null = null;
-  private rejectHandler: ((error: Error) => void) | null = null;
+export interface PaymentInfo {
+  paymentId: string;
+  status: 'pending' | 'submitted' | 'included' | 'failed' | 'cancelled';
+  amount: string;
+  currency: string;
+  txHash?: string;
+  createdAt: number;
+  completedAt?: number;
+}
 
-  constructor(config: SettoSDKConfig) {
-    this.merchantId = config.merchantId;
-    this.baseUrl = getBaseUrl(config.environment);
+// ============================================
+// Constants
+// ============================================
+
+const ENVIRONMENTS = {
+  dev: 'https://dev-wallet.settopay.com',
+  prod: 'https://wallet.settopay.com',
+} as const;
+
+const MESSAGE_TYPES = {
+  SETTO_PAYMENT_SUCCESS: 'SETTO_PAYMENT_SUCCESS',
+  SETTO_PAYMENT_FAILED: 'SETTO_PAYMENT_FAILED',
+  SETTO_PAYMENT_CANCELLED: 'SETTO_PAYMENT_CANCELLED',
+} as const;
+
+// ============================================
+// SDK State
+// ============================================
+
+let config: InitConfig | null = null;
+
+function getConfig(): InitConfig {
+  if (!config) {
+    throw new Error('SettoSDK not initialized. Call SettoSDK.initialize() first.');
   }
+  return config;
+}
 
-  /**
-   * 결제 창을 열고 결제를 진행합니다.
-   *
-   * @param params 결제 파라미터
-   * @returns 결제 결과 Promise
-   * @throws {SettoError} 결제 실패 또는 사용자 취소 시
-   *
-   * @example
-   * ```typescript
-   * try {
-   *   const result = await setto.openPayment({
-   *     orderId: 'order-456',
-   *     amount: 10000,
-   *     idpToken: await getFirebaseIdToken(),
-   *   });
-   *   console.log('결제 성공:', result.txId);
-   * } catch (error) {
-   *   if (error instanceof SettoError && error.isUserCancelled()) {
-   *     console.log('사용자가 결제를 취소했습니다.');
-   *   } else {
-   *     console.error('결제 실패:', error);
-   *   }
-   * }
-   * ```
-   */
-  openPayment(params: PaymentParams): Promise<PaymentResult> {
-    return new Promise((resolve, reject) => {
-      this.rejectHandler = reject;
-
-      // UI 생성
-      this.createOverlay();
-      this.createIframe();
-
-      // iframe 로드 완료 시 결제 초기화 메시지 전송
-      this.iframe!.onload = () => {
-        const message: InitPaymentMessage = {
-          type: MESSAGE_TYPES.INIT_PAYMENT,
-          merchantId: this.merchantId,
-          orderId: params.orderId,
-          amount: params.amount,
-          currency: params.currency,
-          idpToken: params.idpToken,
-        };
-        this.iframe!.contentWindow?.postMessage(message, this.baseUrl);
-      };
-
-      // 결제 결과 메시지 수신
-      this.messageHandler = (event: MessageEvent) => {
-        // origin 검증 (보안)
-        if (event.origin !== this.baseUrl) return;
-
-        const { type, data } = event.data as PaymentResultMessage;
-
-        switch (type) {
-          case MESSAGE_TYPES.PAYMENT_SUCCESS:
-            this.cleanup();
-            resolve(data);
-            break;
-
-          case MESSAGE_TYPES.PAYMENT_FAILED:
-            this.cleanup();
-            reject(new SettoError(SettoErrorCode.PAYMENT_FAILED, data.error));
-            break;
-
-          case MESSAGE_TYPES.PAYMENT_CANCELLED:
-            this.cleanup();
-            reject(new SettoError(SettoErrorCode.USER_CANCELLED));
-            break;
-        }
-      };
-
-      window.addEventListener('message', this.messageHandler);
-    });
-  }
-
-  /**
-   * 오버레이 생성
-   */
-  private createOverlay(): void {
-    this.overlay = document.createElement('div');
-    this.overlay.id = 'setto-overlay';
-    this.overlay.style.cssText = OVERLAY_STYLES;
-
-    // 오버레이 클릭 시 결제 취소
-    this.overlay.onclick = (e) => {
-      if (e.target === this.overlay) {
-        const rejectFn = this.rejectHandler;
-        this.cleanup();
-        rejectFn?.(new SettoError(SettoErrorCode.USER_CANCELLED));
-      }
-    };
-
-    document.body.appendChild(this.overlay);
-  }
-
-  /**
-   * iframe 생성
-   */
-  private createIframe(): void {
-    this.iframe = document.createElement('iframe');
-    this.iframe.id = 'setto-iframe';
-    this.iframe.src = `${this.baseUrl}/embed`;
-    this.iframe.style.cssText = IFRAME_STYLES;
-
-    document.body.appendChild(this.iframe);
-  }
-
-  /**
-   * 리소스 정리
-   */
-  private cleanup(): void {
-    // 이벤트 리스너 제거
-    if (this.messageHandler) {
-      window.removeEventListener('message', this.messageHandler);
-      this.messageHandler = null;
-    }
-
-    // DOM 요소 제거
-    this.iframe?.remove();
-    this.overlay?.remove();
-    this.iframe = null;
-    this.overlay = null;
-    this.rejectHandler = null;
-  }
-
-  /**
-   * 현재 결제 창을 강제로 닫습니다.
-   * 일반적으로 사용자가 직접 호출할 필요는 없습니다.
-   */
-  close(): void {
-    const rejectFn = this.rejectHandler;
-    this.cleanup();
-    rejectFn?.(new SettoError(SettoErrorCode.USER_CANCELLED));
+function debugLog(...args: unknown[]): void {
+  if (config?.debug) {
+    console.log('[SettoSDK]', ...args);
   }
 }
 
-// ============================================================================
-// 타입 및 상수 Export
-// ============================================================================
+// ============================================
+// SDK Implementation
+// ============================================
 
-export { SettoError, SettoErrorCode } from './errors';
-export { SETTO_ENVIRONMENTS, type SettoEnvironment } from './environments';
-export {
-  MESSAGE_TYPES,
-  PaymentStatus,
-  type PaymentParams,
-  type PaymentResult,
-  type PaymentStatusType,
-  type SettoSDKConfig,
-} from './types';
+export const SettoSDK = {
+  /**
+   * SDK 초기화
+   *
+   * @param initConfig.merchantId - 고객사 ID (필수)
+   * @param initConfig.environment - 환경 (dev | prod)
+   * @param initConfig.idpToken - IdP 토큰 (선택, 있으면 자동로그인)
+   * @param initConfig.debug - 디버그 로그 (선택)
+   */
+  initialize(initConfig: InitConfig): void {
+    if (config) {
+      console.warn('[SettoSDK] Already initialized');
+      return;
+    }
+    config = initConfig;
+    debugLog('Initialized:', { ...config, idpToken: config.idpToken ? '[REDACTED]' : undefined });
+  },
+
+  /**
+   * 결제 요청
+   *
+   * IdP Token 유무에 따라 자동로그인 여부가 결정됩니다.
+   * - IdP Token 없음: Setto 로그인 필요
+   * - IdP Token 있음: PaymentToken 발급 후 자동로그인
+   */
+  async openPayment(params: PaymentParams): Promise<PaymentResult> {
+    const cfg = getConfig();
+    const baseUrl = ENVIRONMENTS[cfg.environment];
+
+    let url: string;
+
+    if (cfg.idpToken) {
+      // IdP Token 있음 → PaymentToken 발급 → Fragment로 전달
+      debugLog('Requesting PaymentToken...');
+      try {
+        const response = await fetch(`${baseUrl}/api/external/payment/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            merchant_id: cfg.merchantId,
+            amount: params.amount,
+            order_id: params.orderId,
+            idp_token: cfg.idpToken,
+          }),
+        });
+
+        const data = await response.json();
+        if (data.payment_error || data.system_error) {
+          debugLog('PaymentToken error:', data);
+          return { status: 'failed', error: data.payment_error || data.system_error };
+        }
+
+        if (!data.payment_token) {
+          debugLog('PaymentToken not received');
+          return { status: 'failed', error: 'Payment token not received' };
+        }
+
+        // Fragment로 전달 (보안: 서버 로그에 남지 않음)
+        url = `${baseUrl}/pay/wallet#pt=${encodeURIComponent(data.payment_token)}`;
+        debugLog('Opening payment with auto-login');
+      } catch (error) {
+        debugLog('PaymentToken request error:', error);
+        return { status: 'failed', error: 'Network error' };
+      }
+    } else {
+      // IdP Token 없음 → Query param으로 직접 전달
+      const paymentUrl = new URL(`${baseUrl}/pay/wallet`);
+      paymentUrl.searchParams.set('merchant_id', cfg.merchantId);
+      paymentUrl.searchParams.set('amount', params.amount);
+      if (params.orderId) {
+        paymentUrl.searchParams.set('order_id', params.orderId);
+      }
+      url = paymentUrl.toString();
+      debugLog('Opening payment with Setto login');
+    }
+
+    return openIframeAndWait(url, cfg);
+  },
+
+  /**
+   * 결제 상태 조회
+   */
+  async getPaymentInfo(params: InfoParams): Promise<PaymentInfo> {
+    const cfg = getConfig();
+    const baseUrl = ENVIRONMENTS[cfg.environment];
+    const response = await fetch(
+      `${baseUrl}/api/external/payment/${params.paymentId}`,
+      {
+        headers: {
+          'X-Merchant-ID': cfg.merchantId,
+        },
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to get payment info: ${response.status}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * 초기화 여부 확인
+   */
+  isInitialized(): boolean {
+    return config !== null;
+  },
+
+  /**
+   * SDK 리셋 (테스트용)
+   */
+  reset(): void {
+    config = null;
+  },
+};
+
+// ============================================
+// Internal Functions
+// ============================================
+
+function openIframeAndWait(url: string, cfg: InitConfig): Promise<PaymentResult> {
+  return new Promise((resolve) => {
+    // Overlay 생성
+    const overlay = document.createElement('div');
+    overlay.id = 'setto-overlay';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    // iframe 생성
+    const iframe = document.createElement('iframe');
+    iframe.id = 'setto-iframe';
+    iframe.src = url;
+    iframe.style.cssText = `
+      width: 420px;
+      height: 680px;
+      max-width: 95vw;
+      max-height: 90vh;
+      border: none;
+      border-radius: 16px;
+      background: white;
+    `;
+
+    overlay.appendChild(iframe);
+    document.body.appendChild(overlay);
+
+    // Cleanup 함수
+    const cleanup = (): void => {
+      window.removeEventListener('message', messageHandler);
+      overlay.remove();
+    };
+
+    // Overlay 클릭 시 취소
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        debugLog('Payment cancelled by user (overlay click)');
+        cleanup();
+        resolve({ status: 'cancelled' });
+      }
+    });
+
+    // ESC 키로 취소
+    const escHandler = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        debugLog('Payment cancelled by user (ESC key)');
+        cleanup();
+        window.removeEventListener('keydown', escHandler);
+        resolve({ status: 'cancelled' });
+      }
+    };
+    window.addEventListener('keydown', escHandler);
+
+    // postMessage 핸들러
+    const messageHandler = (event: MessageEvent): void => {
+      const baseUrl = ENVIRONMENTS[cfg.environment];
+      if (event.origin !== baseUrl) return;
+
+      const { type, data } = event.data;
+      debugLog('Received message:', type, data);
+
+      if (type === MESSAGE_TYPES.SETTO_PAYMENT_SUCCESS) {
+        cleanup();
+        window.removeEventListener('keydown', escHandler);
+        resolve({
+          status: 'success',
+          paymentId: data.paymentId,
+          txHash: data.txHash,
+        });
+      } else if (type === MESSAGE_TYPES.SETTO_PAYMENT_FAILED) {
+        cleanup();
+        window.removeEventListener('keydown', escHandler);
+        resolve({
+          status: 'failed',
+          error: data.error,
+        });
+      } else if (type === MESSAGE_TYPES.SETTO_PAYMENT_CANCELLED) {
+        cleanup();
+        window.removeEventListener('keydown', escHandler);
+        resolve({ status: 'cancelled' });
+      }
+    };
+
+    window.addEventListener('message', messageHandler);
+  });
+}
+
+export default SettoSDK;

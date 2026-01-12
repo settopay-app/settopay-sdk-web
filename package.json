@@ -1,21 +1,15 @@
 {
-  "name": "@setto/web-sdk",
-  "version": "0.1.0",
-  "description": "Setto Web SDK - iframe + postMessage 방식의 결제 연동 SDK",
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "name": "@setto-pay/external-sdk-web",
+  "version": "0.1.1",
+  "description": "Setto External SDK for Web - Integrate Setto payments into your web application",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     }
   },
   "files": [
@@ -24,36 +18,21 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
-    "prepublishOnly": "pnpm run build"
+    "example": "npx serve .",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "setto",
     "payment",
-    "wallet",
     "sdk",
-    "web",
-    "iframe",
-    "postmessage"
+    "crypto",
+    "stablecoin"
   ],
   "author": "Setto",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/settopay-app/settopay-app.git",
-    "directory": "packages/wallet-sdk/packages/bindings/web"
-  },
-  "homepage": "https://settopay.com",
   "devDependencies": {
-    "tsup": "^8.0.0",
-    "typescript": "^5.3.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "publishConfig": {
-    "access": "public"
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.2"
   }
 }

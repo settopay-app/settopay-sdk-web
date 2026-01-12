@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setto SDK - Web Example</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      color: #111;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 32px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .card h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+      color: #333;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: #6366f1;
+    }
+    textarea {
+      min-height: 80px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary {
+      background: #6366f1;
+      color: white;
+      width: 100%;
+    }
+    .btn-success {
+      background: #10b981;
+      color: white;
+      width: 100%;
+    }
+    .price-buttons {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .price-btn {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .price-btn:hover { background: #f5f5f5; }
+    .price-btn.active {
+      background: #6366f1;
+      color: white;
+      border-color: #6366f1;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .result.success {
+      background: #ecfdf5;
+      border: 1px solid #10b981;
+      color: #065f46;
+    }
+    .result.error {
+      background: #fef2f2;
+      border: 1px solid #ef4444;
+      color: #991b1b;
+    }
+    .result.cancelled {
+      background: #fefce8;
+      border: 1px solid #eab308;
+      color: #854d0e;
+    }
+    .code {
+      font-family: monospace;
+      font-size: 12px;
+      background: #f5f5f5;
+      padding: 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .divider {
+      height: 1px;
+      background: #eee;
+      margin: 20px 0;
+    }
+    .env-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .env-badge.dev { background: #fef3c7; color: #92400e; }
+    .env-badge.prod { background: #dcfce7; color: #166534; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Setto SDK - Web Example</h1>
+    <p class="subtitle">고객사 웹에서 Setto 결제를 연동하는 예제</p>
+
+    <!-- SDK 초기화 -->
+    <div class="card">
+      <h2>1. SDK 초기화</h2>
+      <div class="form-group">
+        <label>Merchant ID</label>
+        <input type="text" id="merchantId" value="01KDHYY1EAQ98FHG1TQ07KHKHW" />
+      </div>
+      <div class="form-group">
+        <label>Environment</label>
+        <select id="environment">
+          <option value="dev" selected>Development (dev-wallet.settopay.com)</option>
+          <option value="prod">Production (wallet.settopay.com)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>IdP Token (선택 - 있으면 자동로그인)</label>
+        <textarea id="idpToken" placeholder="Firebase ID Token (eyJhbGciOiJSUzI1NiIs...)"></textarea>
+      </div>
+      <button class="btn btn-primary" id="initBtn">Initialize SDK</button>
+      <div id="initResult"></div>
+    </div>
+
+    <!-- 결제 요청 -->
+    <div class="card">
+      <h2>2. 결제 요청</h2>
+      <div class="form-group">
+        <label>Amount (USD)</label>
+        <div class="price-buttons">
+          <button class="price-btn" data-amount="1">$1</button>
+          <button class="price-btn active" data-amount="10">$10</button>
+          <button class="price-btn" data-amount="100">$100</button>
+          <button class="price-btn" data-amount="1000">$1000</button>
+        </div>
+        <input type="text" id="amount" value="10" />
+      </div>
+      <div class="form-group">
+        <label>Order ID (선택)</label>
+        <input type="text" id="orderId" placeholder="your-order-123" />
+      </div>
+      <button class="btn btn-success" id="payBtn" disabled>Open Payment</button>
+      <div id="payResult"></div>
+    </div>
+
+    <!-- 코드 예제 -->
+    <div class="card">
+      <h2>코드 예제</h2>
+      <div class="code" id="codeExample">// 1. SDK 초기화
+SettoSDK.initialize({
+  merchantId: '01KDHYY1EAQ98FHG1TQ07KHKHW',
+  environment: 'dev',
+  // idpToken: 'firebase-id-token', // 선택: 있으면 자동로그인
+  debug: true,
+});
+
+// 2. 결제 요청
+const result = await SettoSDK.openPayment({
+  amount: '10',
+  orderId: 'order-123', // 선택
+});
+
+// 3. 결과 처리
+if (result.status === 'success') {
+  console.log('Payment ID:', result.paymentId);
+  console.log('Tx Hash:', result.txHash);
+} else if (result.status === 'failed') {
+  console.error('Error:', result.error);
+} else {
+  console.log('Cancelled');
+}</div>
+    </div>
+  </div>
+
+  <!-- SDK 로드 (CDN 또는 빌드된 파일) -->
+  <script type="module">
+    // 개발 환경에서는 로컬 빌드 사용
+    // 프로덕션에서는 CDN 또는 npm 패키지 사용
+    import { SettoSDK } from '../dist/index.mjs';
+
+    // 전역으로 노출 (디버깅용)
+    window.SettoSDK = SettoSDK;
+
+    // DOM Elements
+    const merchantIdInput = document.getElementById('merchantId');
+    const environmentSelect = document.getElementById('environment');
+    const idpTokenInput = document.getElementById('idpToken');
+    const initBtn = document.getElementById('initBtn');
+    const initResult = document.getElementById('initResult');
+
+    const amountInput = document.getElementById('amount');
+    const orderIdInput = document.getElementById('orderId');
+    const payBtn = document.getElementById('payBtn');
+    const payResult = document.getElementById('payResult');
+    const priceButtons = document.querySelectorAll('.price-btn');
+
+    // Price button handlers
+    priceButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        priceButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        amountInput.value = btn.dataset.amount;
+      });
+    });
+
+    amountInput.addEventListener('input', () => {
+      priceButtons.forEach(b => b.classList.remove('active'));
+    });
+
+    // Initialize SDK
+    initBtn.addEventListener('click', () => {
+      try {
+        // Reset if already initialized
+        if (SettoSDK.isInitialized()) {
+          SettoSDK.reset();
+        }
+
+        const config = {
+          merchantId: merchantIdInput.value,
+          environment: environmentSelect.value,
+          debug: true,
+        };
+
+        // IdP Token이 있으면 추가
+        const idpToken = idpTokenInput.value.trim();
+        if (idpToken) {
+          config.idpToken = idpToken;
+        }
+
+        SettoSDK.initialize(config);
+
+        initResult.innerHTML = `
+          <div class="result success">
+            <strong>SDK Initialized!</strong><br>
+            Merchant: ${config.merchantId}<br>
+            Environment: <span class="env-badge ${config.environment}">${config.environment}</span><br>
+            Auto-login: ${idpToken ? 'Yes (IdP Token provided)' : 'No'}
+          </div>
+        `;
+        payBtn.disabled = false;
+      } catch (error) {
+        initResult.innerHTML = `
+          <div class="result error">
+            <strong>Initialization Failed</strong><br>
+            ${error.message}
+          </div>
+        `;
+      }
+    });
+
+    // Open Payment
+    payBtn.addEventListener('click', async () => {
+      if (!SettoSDK.isInitialized()) {
+        payResult.innerHTML = `
+          <div class="result error">
+            SDK not initialized. Click "Initialize SDK" first.
+          </div>
+        `;
+        return;
+      }
+
+      payBtn.disabled = true;
+      payBtn.textContent = 'Processing...';
+      payResult.innerHTML = '';
+
+      try {
+        const params = {
+          amount: amountInput.value,
+        };
+
+        const orderId = orderIdInput.value.trim();
+        if (orderId) {
+          params.orderId = orderId;
+        }
+
+        console.log('[Example] Opening payment:', params);
+        const result = await SettoSDK.openPayment(params);
+        console.log('[Example] Payment result:', result);
+
+        if (result.status === 'success') {
+          payResult.innerHTML = `
+            <div class="result success">
+              <strong>Payment Successful!</strong><br>
+              Payment ID: ${result.paymentId}<br>
+              Tx Hash: ${result.txHash || 'N/A'}
+            </div>
+          `;
+        } else if (result.status === 'failed') {
+          payResult.innerHTML = `
+            <div class="result error">
+              <strong>Payment Failed</strong><br>
+              Error: ${result.error}
+            </div>
+          `;
+        } else {
+          payResult.innerHTML = `
+            <div class="result cancelled">
+              <strong>Payment Cancelled</strong><br>
+              User closed the payment window.
+            </div>
+          `;
+        }
+      } catch (error) {
+        payResult.innerHTML = `
+          <div class="result error">
+            <strong>Error</strong><br>
+            ${error.message}
+          </div>
+        `;
+      } finally {
+        payBtn.disabled = false;
+        payBtn.textContent = 'Open Payment';
+      }
+    });
+
+    // Auto-initialize for convenience
+    console.log('[Setto SDK Example] Ready. Click "Initialize SDK" to start.');
+  </script>
+</body>
+</html>

@@ -160,10 +160,6 @@
     <div class="card">
       <h2>1. SDK 초기화</h2>
       <div class="form-group">
-        <label>Merchant ID</label>
-        <input type="text" id="merchantId" value="01KDHYY1EAQ98FHG1TQ07KHKHW" />
-      </div>
-      <div class="form-group">
         <label>Environment</label>
         <select id="environment">
           <option value="dev" selected>Development (dev-wallet.settopay.com)</option>
@@ -181,6 +177,10 @@
     <!-- 결제 요청 -->
     <div class="card">
       <h2>2. 결제 요청</h2>
+      <div class="form-group">
+        <label>Merchant ID</label>
+        <input type="text" id="merchantId" value="01KDHYY1EAQ98FHG1TQ07KHKHW" />
+      </div>
       <div class="form-group">
         <label>Amount (USD)</label>
         <div class="price-buttons">
@@ -204,7 +204,6 @@
       <h2>코드 예제</h2>
       <div class="code" id="codeExample">// 1. SDK 초기화
 SettoSDK.initialize({
-  merchantId: '01KDHYY1EAQ98FHG1TQ07KHKHW',
   environment: 'dev',
   // idpToken: 'firebase-id-token', // 선택: 있으면 자동로그인
   debug: true,
@@ -212,6 +211,7 @@ SettoSDK.initialize({
 
 // 2. 결제 요청
 const result = await SettoSDK.openPayment({
+  merchantId: '01KDHYY1EAQ98FHG1TQ07KHKHW',
   amount: '10',
   orderId: 'order-123', // 선택
 });
@@ -238,12 +238,12 @@ if (result.status === 'success') {
     window.SettoSDK = SettoSDK;
 
     // DOM Elements
-    const merchantIdInput = document.getElementById('merchantId');
     const environmentSelect = document.getElementById('environment');
     const idpTokenInput = document.getElementById('idpToken');
     const initBtn = document.getElementById('initBtn');
     const initResult = document.getElementById('initResult');
 
+    const merchantIdInput = document.getElementById('merchantId');
     const amountInput = document.getElementById('amount');
     const orderIdInput = document.getElementById('orderId');
     const payBtn = document.getElementById('payBtn');
@@ -272,7 +272,6 @@ if (result.status === 'success') {
         }
 
         const config = {
-          merchantId: merchantIdInput.value,
           environment: environmentSelect.value,
           debug: true,
         };
@@ -288,7 +287,6 @@ if (result.status === 'success') {
         initResult.innerHTML = `
           <div class="result success">
             <strong>SDK Initialized!</strong><br>
-            Merchant: ${config.merchantId}<br>
             Environment: <span class="env-badge ${config.environment}">${config.environment}</span><br>
             Auto-login: ${idpToken ? 'Yes (IdP Token provided)' : 'No'}
           </div>
@@ -321,6 +319,7 @@ if (result.status === 'success') {
 
       try {
         const params = {
+          merchantId: merchantIdInput.value,
           amount: amountInput.value,
         };
 

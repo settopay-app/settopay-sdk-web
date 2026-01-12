@@ -12,18 +12,19 @@
 export type Environment = 'dev' | 'prod';
 
 export interface InitConfig {
-  merchantId: string;
   environment: Environment;
   idpToken?: string; // IdP 토큰 (있으면 자동로그인)
   debug?: boolean;
 }
 
 export interface PaymentParams {
+  merchantId: string;
   amount: string;
   orderId?: string;
 }
 
 export interface InfoParams {
+  merchantId: string;
   paymentId: string;
 }
 
@@ -86,7 +87,6 @@ export const SettoSDK = {
   /**
    * SDK 초기화
    *
-   * @param initConfig.merchantId - 고객사 ID (필수)
    * @param initConfig.environment - 환경 (dev | prod)
    * @param initConfig.idpToken - IdP 토큰 (선택, 있으면 자동로그인)
    * @param initConfig.debug - 디버그 로그 (선택)
@@ -121,7 +121,7 @@ export const SettoSDK = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            merchant_id: cfg.merchantId,
+            merchant_id: params.merchantId,
             amount: params.amount,
             order_id: params.orderId,
             idp_token: cfg.idpToken,
@@ -149,7 +149,7 @@ export const SettoSDK = {
     } else {
       // IdP Token 없음 → Query param으로 직접 전달
       const paymentUrl = new URL(`${baseUrl}/pay/wallet`);
-      paymentUrl.searchParams.set('merchant_id', cfg.merchantId);
+      paymentUrl.searchParams.set('merchant_id', params.merchantId);
       paymentUrl.searchParams.set('amount', params.amount);
       if (params.orderId) {
         paymentUrl.searchParams.set('order_id', params.orderId);
@@ -171,7 +171,7 @@ export const SettoSDK = {
       `${baseUrl}/api/external/payment/${params.paymentId}`,
       {
         headers: {
-          'X-Merchant-ID': cfg.merchantId,
+          'X-Merchant-ID': params.merchantId,
         },
       }
     );

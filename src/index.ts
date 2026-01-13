@@ -58,9 +58,16 @@ export interface PaymentInfo {
 // Constants
 // ============================================
 
-const ENVIRONMENTS = {
+// API 서버 (백엔드 gRPC-Gateway)
+const API_ENDPOINTS = {
   dev: 'https://dev-wallet.settopay.com',
   prod: 'https://wallet.settopay.com',
+} as const;
+
+// 웹앱 (프론트엔드 결제 페이지)
+const WEB_APP_URLS = {
+  dev: 'https://dev-app.settopay.com',
+  prod: 'https://app.settopay.com',
 } as const;
 
 const MESSAGE_TYPES = {
@@ -117,7 +124,8 @@ export const SettoSDK = {
    */
   async openPayment(params: PaymentParams): Promise<PaymentResult> {
     const cfg = getConfig();
-    const baseUrl = ENVIRONMENTS[cfg.environment];
+    const apiUrl = API_ENDPOINTS[cfg.environment];
+    const webAppUrl = WEB_APP_URLS[cfg.environment];
 
     // 항상 PaymentToken 발급 (idpToken 유무와 상관없이)
     debugLog('Requesting PaymentToken...');
@@ -130,13 +138,14 @@ export const SettoSDK = {
         body.idp_token = params.idpToken;
       }
 
-      const response = await fetch(`${baseUrl}/api/external/payment/token`, {
+      const response = await fetch(`${apiUrl}/api/external/payment/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
       const data = await response.json();
+      debugLog('Response:', data);
       if (data.payment_error || data.system_error) {
         debugLog('PaymentToken error:', data);
         return { status: 'failed', error: data.payment_error || data.system_error };
@@ -148,8 +157,8 @@ export const SettoSDK = {
       }
 
       // Fragment로 전달 (보안: 서버 로그에 남지 않음)
-      const url = `${baseUrl}/pay/wallet#pt=${encodeURIComponent(data.payment_token)}`;
-      debugLog('Opening payment page');
+      const url = `${webAppUrl}/pay/wallet#pt=${encodeURIComponent(data.payment_token)}`;
+      debugLog('Opening payment page:', url);
 
       return openIframeAndWait(url, cfg);
     } catch (error) {
@@ -163,9 +172,9 @@ export const SettoSDK = {
    */
   async getPaymentInfo(params: InfoParams): Promise<PaymentInfo> {
     const cfg = getConfig();
-    const baseUrl = ENVIRONMENTS[cfg.environment];
+    const apiUrl = API_ENDPOINTS[cfg.environment];
     const response = await fetch(
-      `${baseUrl}/api/external/payment/${params.paymentId}`,
+      `${apiUrl}/api/external/payment/${params.paymentId}`,
       {
         headers: {
           'X-Merchant-ID': params.merchantId,
@@ -251,8 +260,8 @@ function openIframeAndWait(url: string, cfg: InitConfig): Promise<PaymentResult>
 
     // postMessage 핸들러
     const messageHandler = (event: MessageEvent): void => {
-      const baseUrl = ENVIRONMENTS[cfg.environment];
-      if (event.origin !== baseUrl) return;
+      const webAppUrl = WEB_APP_URLS[cfg.environment];
+      if (event.origin !== webAppUrl) return;
 
       const { type, data } = event.data;
       debugLog('Received message:', type, data);

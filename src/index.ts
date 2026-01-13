@@ -31,6 +31,16 @@ export interface PaymentResult {
   status: 'success' | 'failed' | 'cancelled';
   paymentId?: string;
   txHash?: string;
+  /** 결제자 지갑 주소 */
+  fromAddress?: string;
+  /** 결산 수신자 주소 (pool이 아닌 최종 수신자) */
+  toAddress?: string;
+  /** 결제 금액 (USD, 예: "10.00") */
+  amount?: string;
+  /** 체인 ID (예: 8453, 56, 900001) */
+  chainId?: number;
+  /** 토큰 심볼 (예: "USDC", "USDT") */
+  tokenSymbol?: string;
   error?: string;
 }
 
@@ -254,6 +264,11 @@ function openIframeAndWait(url: string, cfg: InitConfig): Promise<PaymentResult>
           status: 'success',
           paymentId: data.paymentId,
           txHash: data.txHash,
+          fromAddress: data.fromAddress,
+          toAddress: data.toAddress,
+          amount: data.amount,
+          chainId: data.chainId,
+          tokenSymbol: data.tokenSymbol,
         });
       } else if (type === MESSAGE_TYPES.SETTO_PAYMENT_FAILED) {
         cleanup();
